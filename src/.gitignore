@@ -1,0 +1,37 @@
+# XOR Packer - Fichiers à ignorer
+
+# Exécutables générés
+stub_generate
+packed_*
+test_*
+
+# Fichiers de compilation
+*.o
+*.out
+*.dSYM/
+*.dylib
+*.so
+
+# Fichiers temporaires
+*.tmp
+*.temp
+/tmp/
+
+# Stubs générés
+*.c
+!stub_generate.c
+
+# Fichiers macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Fichiers d'éditeur
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
