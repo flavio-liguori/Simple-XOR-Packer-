@@ -1,3 +1,10 @@
+# NEW UPDATE
+
+Cle Xor scindé en 4 parties avec ajouts de codes leurres . 
+
+
+
+
 # XOR Packer
 
 Un packer d'exécutables utilisant le chiffrement XOR pour macOS, écrit en C.
