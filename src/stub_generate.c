@@ -29,6 +29,7 @@ typedef struct {
 
 #define MAGIC_SIGNATURE 0x50414B45  // "PAKE"
 #define FLAG_ENCRYPTED  0x02
+#define KEY_PARTS 4  // Nombre de parties pour scinder la clé
 
 // Prototypes des fonctions
 file_info_t* read_file(const char* filename);
@@ -196,6 +197,16 @@ int generate_stub_file(const char *payload_file, const char *output_file) {
     
     printf("[+] Generated XOR key of size: %zu bytes\n", key_size);
     
+    // Scinder la clé en 4 parties
+    size_t part_size = key_size / KEY_PARTS;
+    uint8_t *key_parts[KEY_PARTS];
+    
+    for (int i = 0; i < KEY_PARTS; i++) {
+        key_parts[i] = malloc(part_size);
+        memcpy(key_parts[i], xor_key->key + (i * part_size), part_size);
+        printf("[+] Key part %d: %zu bytes\n", i + 1, part_size);
+    }
+    
     // Chiffrement du payload
     uint8_t *encrypted_data = (uint8_t*)malloc(payload_info->size);
     if (!encrypted_data) {
@@ -265,13 +276,45 @@ int generate_stub_file(const char *payload_file, const char *output_file) {
     fprintf(output, "// Packed file header\n");
     write_binary_as_c_array(output, (uint8_t*)&header, sizeof(header), "packed_header");
     
-    // Écriture de la clé XOR
-    fprintf(output, "// XOR decryption key\n");
-    write_binary_as_c_array(output, xor_key->key, xor_key->size, "xor_key");
+    // Écriture dispersée des parties de clé avec noms trompeurs
+    const char *fake_names[] = {"config_data", "version_info", "metadata_block", "checksum_data"};
     
-    // Écriture des données chiffrées
+    fprintf(output, "// Key part 1 (hidden as configuration)\n");
+    write_binary_as_c_array(output, key_parts[0], part_size, fake_names[0]);
+    
+    // Écriture des données chiffrées (pour séparer les parties de clé)
     fprintf(output, "// Encrypted payload data\n");
     write_binary_as_c_array(output, encrypted_data, payload_info->size, "encrypted_payload");
+    
+    fprintf(output, "// Key part 2 (hidden as version info)\n");
+    write_binary_as_c_array(output, key_parts[1], part_size, fake_names[1]);
+    
+    // Fausses données pour brouiller l'analyse
+    fprintf(output, "// Decoy buffer - system data\n");
+    uint8_t fake_data[64];
+    for (int i = 0; i < 64; i++) fake_data[i] = rand() % 256;
+    write_binary_as_c_array(output, fake_data, 64, "system_buffer");
+    
+    fprintf(output, "// Key part 3 (hidden as metadata)\n");
+    write_binary_as_c_array(output, key_parts[2], part_size, fake_names[2]);
+    
+    // Plus de fausses données
+    fprintf(output, "// Application constants\n");
+    uint8_t more_fake[32];
+    for (int i = 0; i < 32; i++) more_fake[i] = rand() % 256;
+    write_binary_as_c_array(output, more_fake, 32, "app_constants");
+    
+    fprintf(output, "// Key part 4 (hidden as checksum data)\n");
+    write_binary_as_c_array(output, key_parts[3], part_size, fake_names[3]);
+    
+    // Fonction de reconstruction de la clé
+    fprintf(output, "// Key reconstruction function\n");
+    fprintf(output, "void reconstruct_key(uint8_t *full_key) {\n");
+    fprintf(output, "    memcpy(full_key, config_data, %zu);\n", part_size);
+    fprintf(output, "    memcpy(full_key + %zu, version_info, %zu);\n", part_size, part_size);
+    fprintf(output, "    memcpy(full_key + %zu, metadata_block, %zu);\n", part_size * 2, part_size);
+    fprintf(output, "    memcpy(full_key + %zu, checksum_data, %zu);\n", part_size * 3, part_size);
+    fprintf(output, "}\n\n");
     
     // Fonction de déchiffrement XOR
     fprintf(output, "// XOR decryption function\n");
@@ -358,10 +401,18 @@ int generate_stub_file(const char *payload_file, const char *output_file) {
     fprintf(output, "        return -1;\n");
     fprintf(output, "    }\n\n");
     
+    fprintf(output, "    // Reconstruct XOR key from scattered parts\n");
+    fprintf(output, "    uint8_t reconstructed_key[%zu];\n", key_size);
+    fprintf(output, "    reconstruct_key(reconstructed_key);\n");
+    fprintf(output, "    printf(\"[+] Key reconstructed from %d parts\\n\", %d);\n\n", KEY_PARTS);
+    
     fprintf(output, "    // Copy and decrypt payload\n");
     fprintf(output, "    memcpy(decrypted_payload, encrypted_payload, header->original_size);\n");
-    fprintf(output, "    xor_decrypt(decrypted_payload, header->original_size, xor_key, header->key_size);\n");
-    fprintf(output, "    printf(\"[+] Payload decrypted successfully\\n\");\n\n");
+    fprintf(output, "    xor_decrypt(decrypted_payload, header->original_size, reconstructed_key, header->key_size);\n");
+    fprintf(output, "    printf(\"[+] Payload decrypted successfully\\n\");\n");
+    
+    fprintf(output, "    // Clear key from memory for security\n");
+    fprintf(output, "    memset(reconstructed_key, 0, %zu);\n\n", key_size);
     
     fprintf(output, "    // Verify checksum\n");
     fprintf(output, "    uint32_t calculated_checksum = calculate_checksum(decrypted_payload, header->original_size);\n");
@@ -390,6 +441,9 @@ int generate_stub_file(const char *payload_file, const char *output_file) {
     
     // Nettoyage
     free(encrypted_data);
+    for (int i = 0; i < KEY_PARTS; i++) {
+        free(key_parts[i]);
+    }
     free_xor_key(xor_key);
     free_file_info(payload_info);
     
